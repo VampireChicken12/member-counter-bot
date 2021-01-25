@@ -1,60 +1,30 @@
 #!/usr/bin/env node
-import * as Eris from 'eris';
-import mongoose, { mongo } from 'mongoose';
 import getEnv from './utils/getEnv';
-import injectEventHandlers from './utils/injectEventHandlers';
-import statusWS from './others/status';
+import Bot from './bot';
+import DatabaseClient from './db';
+import mongoose from 'mongoose';
+import Website from './others/website';
+import checkConfig from './others/checkConfig';
+const { NODE_ENV } = getEnv();
 
-const { PREMIUM_BOT, DISCORD_CLIENT_TOKEN, DB_URI, NODE_ENV } = getEnv();
-
-// Discord client
-const intents: Eris.IntentStrings[] = [
-	'guildMembers',
-	'guilds',
-	'guildBans',
-	'guildMessages',
-	'directMessages',
-	'guildMessageReactions',
-	'directMessageReactions',
-];
-
-if (PREMIUM_BOT) intents.push('guildPresences', 'guildVoiceStates');
-
-const client = new Eris.Client(DISCORD_CLIENT_TOKEN, {
-	getAllUsers: PREMIUM_BOT,
-	guildCreateTimeout: 15000,
-	intents,
-	maxShards: 'auto',
-	messageLimit: 0,
-	defaultImageFormat: 'jpg',
-	compress: true,
-	restMode: true,
-});
-
-injectEventHandlers(client);
-
-client.connect();
-
-// Mongoose connection
-mongoose
-	.connect(DB_URI, {
-		useNewUrlParser: true,
-		useUnifiedTopology: true,
-		useFindAndModify: false,
-	})
-	.then(() => {
-		console.log('[Mongoose] Connection ready');
-	})
-	.catch(console.error);
-
-statusWS(client, mongoose);
-
+checkConfig();
+DatabaseClient.init();
+Bot.init();
+Website.init();
 
 if (NODE_ENV === "production") {
-	process.on('unhandledRejection', (reason, p) => {
-    console.error("Unhandled Rejection at: Promise ", p, " reason: ", reason);
-	});
-	process.on('uncaughtException', (exception) => {
-    console.error("Uncaught Exception ", exception);
-	});
+	process
+		.on('unhandledRejection', (reason, p) => {
+			console.error("Unhandled Rejection at: Promise ", p, " reason: ", reason);
+		})
+		.on('uncaughtException', (exception) => {
+			console.error("Uncaught Exception ", exception);
+		})
+		.on('SIGTERM', async () => {
+      Bot.client.editStatus('dnd', { type: 0, name: "going offline" });
+      Bot.client.disconnect({ reconnect: false });
+			await mongoose.disconnect();
+			process.exit(0);
+    });;
 }
+
